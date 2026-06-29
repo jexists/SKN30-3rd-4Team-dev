@@ -48,7 +48,7 @@ gh --version
 
 ## 2. 커밋 메시지 형식
 
-```
+```text
 <type>: <한글 설명>
 ```
 
@@ -56,7 +56,7 @@ gh --version
 설명은 한글로, Co-Authored-By 태그는 절대 붙이지 않는다.
 
 예:
-```
+```text
 feat: 등기부 특약 이탈 탐지 추가
 fix: Chroma 임베딩 재시도 오류 수정
 docs: 데이터 파이프라인 명세 업데이트
@@ -106,7 +106,7 @@ Claude Code CLI에서 슬래시 커맨드로 실행한다.
 아래 규칙을 반드시 지켜라.
 
 - git status, git diff로 변경 파악
-- 스테이징 금지 목록: .env, .venv/, __pycache__/, *.pyc, .ruff_cache/, .pytest_cache/, data/05_vectordb/
+- 스테이징 금지 목록: .env, .venv/, __pycache__/, *.pyc, .ruff_cache/, .pytest_cache/
 - 커밋 메시지 형식: <type>: <한글 설명>
   type = feat | fix | refactor | chore | docs | test | style | perf
 - Co-Authored-By 태그 절대 금지
