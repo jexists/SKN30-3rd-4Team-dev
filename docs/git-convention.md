@@ -1,5 +1,32 @@
 # Git 컨벤션 & AI 워크플로우
 
+## 0. 사전 준비 — GitHub CLI (`gh`) 설치
+
+PR 생성에 `gh`가 필요하다. 아래 중 해당하는 OS로 설치한 뒤 로그인한다.
+
+**Mac**
+```bash
+brew install gh
+```
+
+**Windows**
+```powershell
+winget install --id GitHub.cli
+```
+
+**로그인 (공통)**
+```bash
+gh auth login
+# GitHub.com → HTTPS → Login with a web browser 선택
+```
+
+설치 확인:
+```bash
+gh --version
+```
+
+---
+
 ## 1. 브랜치 전략
 
 작업은 항상 기능 브랜치에서 시작한다. 완료되면 `develop`에 PR을 올리고, CodeRabbit 자동 리뷰를 거쳐 팀원이 머지한다. `main`은 `develop` 머지 시 자동으로 동기화되므로 직접 PR하지 않는다.
