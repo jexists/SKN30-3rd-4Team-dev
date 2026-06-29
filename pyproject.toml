@@ -1,0 +1,29 @@
+[project]
+name = "jeonse-factchecker"
+version = "0.1.0"
+description = "전·월세 분쟁 팩트체커 — 계약 전 위험 분석부터 계약 후 분쟁 대응까지 돕는 챗봇"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "streamlit",
+    "langchain",
+    "langchain-openai",
+    "langchain-community",
+    "langgraph",
+    "langsmith",
+    "openai",
+    "pypdf",
+    "chromadb",
+    "tiktoken",
+    "python-dotenv",
+    "pydantic-settings",
+]
+
+[dependency-groups]
+dev = [
+    "ruff",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"

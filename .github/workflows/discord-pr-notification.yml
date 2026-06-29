@@ -1,0 +1,87 @@
+name: Discord PR 알림
+
+on:
+  pull_request_target:
+    types: [opened, closed]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  # ① develop 대상 PR이 열렸을 때
+  notify-pr-opened:
+    if: github.event.action == 'opened' && github.event.pull_request.base.ref == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord 알림 (새 PR → develop)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          jq -n \
+            --arg title "🔀 새 PR이 생성됐어요 (→ develop)" \
+            --arg url "$PR_URL" \
+            --arg description "$PR_TITLE" \
+            --arg author "$PR_AUTHOR" \
+            --arg branch "\`$PR_HEAD\` → \`$PR_BASE\`" \
+            '{
+              embeds: [{
+                title: $title,
+                url: $url,
+                description: $description,
+                color: 5814783,
+                fields: [
+                  { name: "작성자", value: $author, inline: true },
+                  { name: "브랜치", value: $branch, inline: true }
+                ]
+              }]
+            }' \
+          | curl --fail-with-body --show-error \
+              --retry 3 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 \
+              -s -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d @-
+
+  # ② main으로 머지됐을 때
+  notify-main-merged:
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord 알림 (main 머지)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.merged_by.login }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          jq -n \
+            --arg title "✅ main에 머지됐어요" \
+            --arg url "$PR_URL" \
+            --arg description "$PR_TITLE" \
+            --arg author "$PR_AUTHOR" \
+            --arg branch "\`$PR_HEAD\` → \`$PR_BASE\`" \
+            '{
+              embeds: [{
+                title: $title,
+                url: $url,
+                description: $description,
+                color: 3066993,
+                fields: [
+                  { name: "머지한 사람", value: $author, inline: true },
+                  { name: "브랜치", value: $branch, inline: true }
+                ]
+              }]
+            }' \
+          | curl --fail-with-body --show-error \
+              --retry 3 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 \
+              -s -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d @-
