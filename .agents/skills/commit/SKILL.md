@@ -47,7 +47,7 @@ git diff --cached # staged
 
 ### 3. 스테이징 제외 대상
 - `.env` — API 키
-- `.claude/**` — Claude Code 설정
+- `.claude/settings.local.json` 등 로컬·비밀 설정만 제외 (`.claude/commands/`는 추적 대상 → 포함)
 - `__pycache__/`, `*.pyc`, `.venv/`, `.ruff_cache/`, `.pytest_cache/`
 - `data/05_vectordb/` — 별도 확인 후 커밋
 
@@ -68,13 +68,14 @@ EOF
 ```bash
 git fetch origin
 
-# 원격에 같은 브랜치가 이미 있으면 동기화 (없으면 생략)
+# 원격에 같은 브랜치가 있을 때만 동기화 (없으면 첫 푸시이므로 건너뜀)
 # 충돌 시: 자동 해결 금지 → git rebase --abort 후 즉시 중단·사용자 확인
-git pull --rebase
+if git ls-remote --exit-code --heads origin <현재 브랜치> >/dev/null 2>&1; then
+  git pull --rebase
+fi
 
-# 최초 푸시(원격 브랜치 없음): upstream 설정
+# 푸시 (첫 푸시면 -u로 upstream 설정, 이후에도 안전)
 git push -u origin <현재 브랜치>
-# 이후 푸시: git push
 
 git status   # "up to date with 'origin/<브랜치>'" 확인
 ```

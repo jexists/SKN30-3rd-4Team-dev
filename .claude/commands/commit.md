@@ -45,7 +45,7 @@ git diff --cached # staged
 절대 스테이징하지 않을 것:
 
 - `.env` — API 키 포함 환경 변수
-- `.claude/**` — Claude Code 설정
+- `.claude/settings.local.json` 등 로컬·비밀 설정 — `.claude/commands/`(슬래시 커맨드)는 추적 대상이므로 포함
 - `__pycache__/`, `*.pyc` — Python 캐시
 - `.venv/` — 가상환경
 - `.ruff_cache/`, `.pytest_cache/` — 도구 캐시
@@ -95,8 +95,10 @@ EOF
 ```bash
 git fetch origin
 
-# 원격에 같은 브랜치가 이미 있으면 동기화 (없으면 생략)
-git pull --rebase
+# 원격에 같은 브랜치가 있을 때만 동기화 (없으면 첫 푸시이므로 건너뜀)
+if git ls-remote --exit-code --heads origin <현재 브랜치> >/dev/null 2>&1; then
+  git pull --rebase
+fi
 ```
 
 > `git pull --rebase`는 **같은 브랜치**의 원격 최신 상태를 내 커밋 아래에 깔아주는 것.
