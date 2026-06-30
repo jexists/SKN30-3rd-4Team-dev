@@ -3,6 +3,8 @@ name: Discord PR 알림
 on:
   pull_request_target:
     types: [opened, closed]
+  push:
+    branches: [develop]
 
 permissions:
   pull-requests: read
@@ -76,6 +78,44 @@ jobs:
                 fields: [
                   { name: "머지한 사람", value: $author, inline: true },
                   { name: "브랜치", value: $branch, inline: true }
+                ]
+              }]
+            }' \
+          | curl --fail-with-body --show-error \
+              --retry 3 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 \
+              -s -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d @-
+
+  # ③ develop에 푸시됐을 때
+  notify-develop-push:
+    if: github.event_name == 'push' && github.event.head_commit != null
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord 알림 (develop 푸시)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          PUSHER: ${{ github.event.pusher.name }}
+          COMPARE: ${{ github.event.compare }}
+        run: |
+          jq -n \
+            --arg title "⬆️ develop에 푸시됐어요" \
+            --arg url "$COMMIT_URL" \
+            --arg description "$COMMIT_MSG" \
+            --arg pusher "$PUSHER" \
+            --arg compare "$COMPARE" \
+            '{
+              embeds: [{
+                title: $title,
+                url: $url,
+                description: $description,
+                color: 15844367,
+                fields: [
+                  { name: "푸시한 사람", value: $pusher, inline: true },
+                  { name: "변경 비교", value: $compare, inline: false }
                 ]
               }]
             }' \
