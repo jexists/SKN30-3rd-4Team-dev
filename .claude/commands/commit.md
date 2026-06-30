@@ -12,6 +12,7 @@
 현재 브랜치 == main 또는 develop?
   → 1. 사용자에게 작업 개요를 물어본다
   → 2. git fetch origin develop
+
   → 3. git checkout -b <prefix>/<브랜치명> origin/develop
   → 4. 브랜치 생성 완료 보고 후 아래 커밋 절차(1~6) 계속 진행
 ```
@@ -93,6 +94,7 @@ EOF
 같은 브랜치를 팀원과 공유할 수 있으므로 push 전 반드시 동기화한다.
 
 ```bash
+
 git fetch origin
 
 # 원격에 같은 브랜치가 있을 때만 동기화 (없으면 첫 푸시이므로 건너뜀)

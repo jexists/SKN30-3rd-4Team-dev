@@ -73,6 +73,7 @@ PR 생성 후 develop으로 이동:
 
 ```bash
 git checkout develop
+
 git pull --ff-only origin develop   # fast-forward 불가(로컬 develop 갈라짐)면 거부 → 중단
 ```
 
