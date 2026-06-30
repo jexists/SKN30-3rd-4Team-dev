@@ -66,12 +66,19 @@ EOF
 
 ### 5. 원격 최신화 및 푸시
 ```bash
-git fetch
-git rebase origin/<현재 브랜치>
-git push
-# upstream 미설정 시: git push -u origin <현재 브랜치>
+git fetch origin
+
+# 원격에 같은 브랜치가 이미 있으면 동기화 (없으면 생략)
+# 충돌 시: 자동 해결 금지 → git rebase --abort 후 즉시 중단·사용자 확인
+git pull --rebase
+
+# 최초 푸시(원격 브랜치 없음): upstream 설정
+git push -u origin <현재 브랜치>
+# 이후 푸시: git push
+
 git status   # "up to date with 'origin/<브랜치>'" 확인
 ```
+develop 통합(rebase origin/develop)은 여기서 하지 않는다 — PR 시점에만.
 
 ### 6. 후속 작업 금지
 push까지만. PR 생성·머지·브랜치 삭제는 명시적 지시 시만.
