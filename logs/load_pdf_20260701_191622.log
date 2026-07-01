@@ -1,0 +1,13 @@
+2026-07-01 19:16:22,422 [INFO] OPENAI_API_KEY 설정됨: True
+2026-07-01 19:16:22,423 [INFO] 입력: /Users/jmk/bootcamp/third_project/SKN30-3rd-4Team-dev/data/01_raw/pdf
+2026-07-01 19:16:22,423 [INFO] 원시 체크포인트 출력: /Users/jmk/bootcamp/third_project/SKN30-3rd-4Team-dev/data/02_loaded
+2026-07-01 19:16:22,423 [INFO] 최종 Document 출력: /Users/jmk/bootcamp/third_project/SKN30-3rd-4Team-dev/data/03_processed/pdf
+2026-07-01 19:16:22,423 [INFO] file_list: ['2023_주택·상가건물 임대차분쟁조정 사례집.pdf']
+2026-07-01 19:16:22,423 [INFO] 로그 파일: /Users/jmk/bootcamp/third_project/SKN30-3rd-4Team-dev/logs/load_pdf_20260701_191622.log
+2026-07-01 19:16:22,423 [INFO] [1/1] 처리 중: 2023_주택·상가건물 임대차분쟁조정 사례집.pdf
+2026-07-01 19:16:24,904 [INFO]   로컬 텍스트 추출 중 (PyMuPDF4LLM, 96p)...
+2026-07-01 19:16:26,055 [WARNING]   !! 실패, 다음 파일로 계속 진행: 2023_주택·상가건물 임대차분쟁조정 사례집.pdf  (RapidOCR_DetOnly: No text_detector available.)
+2026-07-01 19:16:26,056 [WARNING] 실패 1건:
+2026-07-01 19:16:26,056 [WARNING]   - 2023_주택·상가건물 임대차분쟁조정 사례집.pdf: RapidOCR_DetOnly: No text_detector available.
+2026-07-01 19:16:26,056 [INFO] 완료: 총 0개 Document (파일 1개, 실패 1개)
+2026-07-01 19:16:26,056 [WARNING] [FAIL] 2023_주택·상가건물 임대차분쟁조정 사례집.pdf
