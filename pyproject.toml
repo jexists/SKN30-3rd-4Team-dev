@@ -32,6 +32,7 @@ dependencies = [
     "future>=1.0.0",
     "load>=1.0.14",
     "state>=0.1.1.dev0",
+    "ragas>=0.4.3",
 ]
 
 [dependency-groups]
