@@ -50,6 +50,10 @@ def inject_css() -> None:
         .block-container {max-width: 820px; padding-top: 3.5rem; padding-bottom: 1rem;}
         #MainMenu, footer {visibility: hidden;}
 
+        /* 로고 이미지 가운데 정렬 */
+        [data-testid="stImage"], [data-testid="stImageContainer"] {text-align:center;}
+        [data-testid="stImage"] img, [data-testid="stImageContainer"] img {margin-left:auto; margin-right:auto;}
+
         .topbar {display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
         .topbar-left {display:flex; align-items:center; gap:8px; font-size:19px; font-weight:700; color:#1a1a1a;}
 
@@ -74,14 +78,19 @@ def inject_css() -> None:
         }
         .notice-title {font-weight:700; color:#374151; margin-bottom:4px;}
 
-        .footer-notice {
-            font-size:12px; color:#8a5a00; background:#fff8e1; border:1px solid #f3e2a8;
-            border-radius:10px; padding:12px 16px; line-height:1.7; margin-top:20px;
+        /* ── 푸터: 구분선 아래로 안내사항·법률고지·저작권을 조용하게 정렬 */
+        .footer-wrap {padding-top:22px; border-top:1px solid #edeff2;}
+        .footer-note {
+            display:flex; gap:9px; align-items:flex-start;
+            font-size:12.5px; color:#6b7280; line-height:1.65; margin-bottom:16px;
         }
-        .footer-row {
-            display:flex; justify-content:space-between; align-items:center;
-            font-size:11px; color:#9ca3af; margin-top:14px; padding-top:14px; border-top:1px solid #eee;
+        .footer-note .ico {color:#2563eb; font-size:13px; line-height:1.5; flex:none;}
+        .footer-note b {display:block; color:#374151; font-weight:600; margin-bottom:2px;}
+        .footer-legal {
+            font-size:11.5px; color:#8a6d1f; line-height:1.65;
+            padding-left:12px; border-left:2px solid #e7cf8a; margin-bottom:18px;
         }
+        .footer-copy {font-size:11px; color:#b3b8bf; letter-spacing:.01em;}
 
         /* 랜딩 히어로 */
         .hero-title {text-align:center; font-size:30px; font-weight:800; color:#1a1a1a;
@@ -106,6 +115,9 @@ def inject_css() -> None:
         .st-key-go_pre [data-testid="stMarkdownContainer"] p:nth-child(3),
         .st-key-go_post [data-testid="stMarkdownContainer"] p:nth-child(3) {font-size:13px; opacity:.92; line-height:1.6;}
 
+        /* 입력창 wrapper 위 여백 (대화 내역·로딩과 간격) */
+        .st-key-chatwrap_pre, .st-key-chatwrap_post {margin-top:40px;}
+
         /* chat_input 전송 버튼만 노랑 (첨부 📎 버튼은 기본색 유지) */
         [data-testid="stChatInputSubmitButton"] {background:#f5df4e !important; border:none !important;}
         [data-testid="stChatInputSubmitButton"] svg {color:#3b3200 !important; fill:#3b3200 !important;}
@@ -128,13 +140,13 @@ def render_logo(width: int = 160) -> None:
 
 
 def render_footer() -> None:
-    """모든 페이지 공통 푸터 — 법률 고지 + 저작권."""
+    """모든 페이지 공통 푸터 — 안내사항 + 법률 고지 + 저작권."""
+    legal = LEGAL_NOTICE.lstrip("※ ").strip()
     st.markdown(
         f"""
-        <div class="footer-notice">{LEGAL_NOTICE}</div>
-        <div class="footer-row">
-            <div>개인정보처리방침&nbsp;&nbsp;이용약관&nbsp;&nbsp;저작권정책&nbsp;&nbsp;문의하기</div>
-            <div>© 2026 전·월세 분쟁 팩트체커</div>
+        <div class="footer-wrap">
+            <div class="footer-legal">{legal}</div>
+            <div class="footer-copy">© 2026 전·월세 분쟁 팩트체커</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -193,15 +205,15 @@ def render_chat(stage: str) -> None:
             st.session_state[mkey] = []
             st.rerun()
 
-    # ── 매매 시세 입력 (계약 전 · 전세가율 계산용)
-    market_price = None
-    if stage == "pre":
-        man = st.number_input(
-            "매매 시세 (만원) · 전세가율 계산용 · 선택",
-            min_value=0, step=1000, value=0,
-            help="등기부·계약서를 첨부하면 보증금은 자동 추출되고, 이 시세로 전세가율을 계산합니다.",
-        )
-        market_price = int(man) * 10_000 if man else None   # 만원 → 원
+    # # ── 매매 시세 입력 (계약 전 · 전세가율 계산용)
+    # market_price = None
+    # if stage == "pre":
+    #     man = st.number_input(
+    #         "매매 시세 (만원) · 전세가율 계산용 · 선택",
+    #         min_value=0, step=1000, value=0,
+    #         help="등기부·계약서를 첨부하면 보증금은 자동 추출되고, 이 시세로 전세가율을 계산합니다.",
+    #     )
+    #     market_price = int(man) * 10_000 if man else None   # 만원 → 원
 
     # ── 백엔드 상태 배너
     if gs["error"]:
@@ -209,64 +221,75 @@ def render_chat(stage: str) -> None:
     if not gs["ready"]:
         st.info("백엔드 미연결 — UI 미리보기 모드입니다. (.env 설정 후 새로고침)")
 
-    # ── 인사 카드
-    st.markdown(
-        f"""
-        <div class="greeting-card">
-            <div class="greeting-avatar">🤖</div>
-            <div>
-                <p class="greeting-title">{meta["greet_title"]}</p>
-                <p class="greeting-desc">{meta["greet_desc"]}</p>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # 처리 대기(pending) 상태 — FAQ 버튼/입력창이 공통으로 사용.
+    #   { "query": 백엔드에 보낼 질문, "docs": 첨부 경로 리스트 or None }
+    pkey = f"pending_{stage}"
+    if pkey not in st.session_state:
+        st.session_state[pkey] = None
 
-    # ── 자주 묻는 질문 카드
-    st.markdown('<div class="section-label">많이 물어보는 질문</div>', unsafe_allow_html=True)
-    faq_cols = st.columns(2)
-    for idx, (icon, title, desc) in enumerate(meta["faq"]):
-        with faq_cols[idx % 2]:
-            with st.container(border=True):
-                st.markdown(f"**{icon}  {title}**")
-                st.caption(desc)
-                if st.button("자세히 보기 →", key=f"faq_{stage}_{idx}", use_container_width=True):
-                    chat_log.append({"role": "user", "content": title})
-                    with st.spinner("근거를 찾는 중…"):
-                        reply = answer_of(gs, st.session_state[tkey], title, stage, None, market_price)
-                    chat_log.append({"role": "assistant", "content": reply})
-                    st.rerun()
+    # 대화 시작 전에만 인사 카드 + FAQ 노출. 시작되면(메시지 존재) 숨겨 채팅 화면처럼.
+    started = bool(chat_log) or st.session_state[pkey] is not None
 
-    # ── 안내사항
-    st.markdown(
-        """
-        <div class="notice-box">
-            <div class="notice-title">ⓘ 안내사항</div>
-            입력하신 내용은 AI 분석에 활용되며, 저장되지 않습니다.<br>
-            법률적 파트너는 아니며, 최종 판단은 전문가와 상담하세요.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # 인사+FAQ 는 st.empty() 자리에 렌더 → 대화 시작 시 이 자리를 즉시 비워
+    #   (답변을 기다리지 않고) 버튼이 곧바로 사라지게 한다.
+    intro_ph = st.empty()
+    if started:
+        intro_ph.empty()
+    else:
+        with intro_ph.container():
+            # ── 인사 카드
+            st.markdown(
+                f"""
+                <div class="greeting-card">
+                    <div class="greeting-avatar">🤖</div>
+                    <div>
+                        <p class="greeting-title">{meta["greet_title"]}</p>
+                        <p class="greeting-desc">{meta["greet_desc"]}</p>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # ── 자주 묻는 질문 카드 → 클릭 시 입력창 전송과 동일하게 동작
+            st.markdown('<div class="section-label">많이 물어보는 질문</div>', unsafe_allow_html=True)
+            faq_cols = st.columns(2)
+            for idx, (icon, title, desc) in enumerate(meta["faq"]):
+                with faq_cols[idx % 2]:
+                    with st.container(border=True):
+                        st.markdown(f"**{icon}  {title}**")
+                        st.caption(desc)
+                        if st.button("자세히 보기 →", key=f"faq_{stage}_{idx}", use_container_width=True):
+                            chat_log.append({"role": "user", "content": title})
+                            st.session_state[pkey] = {"query": title, "docs": None}
+                            st.rerun()
 
     # ── 대화 내역
     for msg in chat_log:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
+    # ── 처리 대기 시, 어시스턴트 로딩 말풍선 '자리'만 미리 확보 (입력창 위).
+    #   실제 로딩/답변 처리는 입력창·푸터를 렌더한 뒤 맨 마지막에 수행 →
+    #   느린 답변 대기 중에도 입력창과 푸터가 계속 보인다.
+    pending = st.session_state[pkey]
+    resp_ph = st.empty() if pending else None
+
     # ── 입력창 (파일 다중 첨부 + 전송). 구버전이면 텍스트 전용 폴백.
-    try:
-        submitted = st.chat_input(
-            meta["placeholder"],
-            accept_file="multiple",
-            file_type=["png", "jpg", "jpeg", "pdf"],
-            key=f"chat_input_{stage}",
-        )
-        _attach_ok = True
-    except TypeError:
-        submitted = st.chat_input(meta["placeholder"], key=f"chat_input_{stage}")
-        _attach_ok = False
+    # st.container 안에서 호출 → 화면 하단 고정(fixed) 대신 문서 흐름에 인라인 배치.
+    #   그래야 아래 render_footer() 푸터가 입력창 '밑'에 표시된다.
+    with st.container(key=f"chatwrap_{stage}"):
+        try:
+            submitted = st.chat_input(
+                meta["placeholder"],
+                accept_file="multiple",
+                file_type=["png", "jpg", "jpeg", "pdf"],
+                key=f"chat_input_{stage}",
+            )
+            _attach_ok = True
+        except TypeError:
+            submitted = st.chat_input(meta["placeholder"], key=f"chat_input_{stage}")
+            _attach_ok = False
 
     if submitted:
         # 반환형 정규화: 첨부 지원 시 객체(text/files), 아니면 문자열
@@ -290,14 +313,28 @@ def render_chat(stage: str) -> None:
             shown += "　📎 " + ", ".join(f.name for f in files)
         chat_log.append({"role": "user", "content": shown})
 
-        with st.spinner("근거를 찾는 중…"):
-            reply = answer_of(
-                gs, st.session_state[tkey],
-                text or "업로드한 서류를 분석해줘",
-                stage, doc_paths or None, market_price,
-            )
-        chat_log.append({"role": "assistant", "content": reply})
+        # FAQ 버튼과 동일하게 pending 으로 넘기고 즉시 리런 → 사용자 말풍선 먼저 표시
+        st.session_state[pkey] = {
+            "query": text or "업로드한 서류를 분석해줘",
+            "docs": doc_paths or None,
+        }
         st.rerun()
 
     # ── 푸터
     render_footer()
+
+    # ── 처리 대기 답변 (맨 마지막): 위에서 확보한 resp_ph 자리를 로딩→답변으로 채운다.
+    #   입력창·푸터가 이미 렌더된 뒤라, 느린 답변을 기다리는 동안에도 계속 보인다.
+    if pending:
+        with resp_ph.container():
+            with st.chat_message("assistant"):
+                with st.spinner("근거를 찾는 중…"):
+                    reply = answer_of(
+                        gs, st.session_state[tkey],
+                        pending["query"],
+                        # stage, pending["docs"], market_price,   # market_price 입력란 주석 처리로 비활성화
+                        stage, pending["docs"], None,
+                    )
+        chat_log.append({"role": "assistant", "content": reply})
+        st.session_state[pkey] = None
+        st.rerun()
