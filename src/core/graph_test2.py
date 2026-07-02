@@ -81,7 +81,7 @@ class FactCheckState(TypedDict, total=False):
 
 
 # ══════════════════════════════════════════════
-# 외부 파이프라인 스텁 (남진님 기존 모듈에 연결)
+# 외부 파이프라인 스텁
 # ══════════════════════════════════════════════
 def run_ocr(document_path: str) -> str:
     # TODO: pdf2image + pytesseract 한글 OCR 파이프라인 연결
@@ -94,7 +94,7 @@ def fetch_market_price(address: str) -> int:
 
 
 # ══════════════════════════════════════════════
-# 계약 전 서브그래프
+# 서브그래프
 # ══════════════════════════════════════════════
 def pre_entry_router(state: FactCheckState) -> str:
     return "doc" if state.get("has_document") else "question"
@@ -187,34 +187,6 @@ def build_pre_graph():
     g.add_edge("analyze_pre_query", "build_pre_context")
     g.add_edge("build_pre_context", END)
     return g.compile()
-
-
-# ══════════════════════════════════════════════
-# 계약 후 서브그래프
-# ══════════════════════════════════════════════
-def classify_issue(state: FactCheckState) -> dict:
-    """수리·분쟁 질문에서 쟁점 분류 + 검색 쿼리 (LLM)."""
-    data = _llm_json(
-        "당신은 임대차 계약 체결 이후 발생한 분쟁(유지보수, 계약갱신, 퇴거, 보증금 미반환) 단계의 임차인 질의 분석 전문가입니다. 법률 지식 데이터베이스 검색에 최적화된 검색 문장과 관련 쟁점 태그를 정확히 분류하세요.\n\n"
-        "지정된 Key별 추출 규칙:\n"
-        "- query: 판례나 주택임대차분쟁조정위원회 사례집에서 유사 사례를 찾을 수 있도록 정제된 핵심 법적 검색 문장\n"
-        "- issues: 다음 태그 리스트 중 해당 분쟁과 직접 연관된 쟁점 태그들만 리스트로 반환 (해당 항목이 없으면 빈 리스트)\n"
-        "  [허용 태그: 'deposit'(보증금 미반환/임차권등기명령), 'repair'(수선의무/결로·누수 분쟁), 'contract_renewal'(계약갱신요구권/상속/양도), 'eviction'(명도/퇴거 의무/해지 통지), 'maintenance_duty'(원상복구 의무/관리비·공과금)]\n\n"
-        f"질문: {state.get('question','')}"
-    )
-    return {"stage": "post",
-            "query": data.get("query", state.get("question", "")),
-            "issues": data.get("issues", []),
-            "retrieval_attempts": 0, "verify_attempts": 0}
-
-
-def build_post_graph():
-    g = StateGraph(FactCheckState)
-    g.add_node("classify_issue", classify_issue)
-    g.add_edge(START, "classify_issue")
-    g.add_edge("classify_issue", END)
-    return g.compile()
-
 
 # ══════════════════════════════════════════════
 # 공통 응답 파이프라인
@@ -340,16 +312,12 @@ def legal_notice(state: FactCheckState) -> dict:
 # ══════════════════════════════════════════════
 # 부모 그래프
 # ══════════════════════════════════════════════
-def entry_router(state: FactCheckState) -> str:
-    return "pre_contract" if state.get("stage") == "pre" else "post_contract"
-
 
 def build_app():
     g = StateGraph(FactCheckState)
 
     # 서브그래프를 노드로 장착 (State 공유)
     g.add_node("pre_contract", build_pre_graph())
-    g.add_node("post_contract", build_post_graph())
 
     # 공통 파이프라인
     g.add_node("retrieve", retrieve)
@@ -361,10 +329,8 @@ def build_app():
     g.add_node("legal_notice", legal_notice)
 
     # 진입 라우팅
-    g.add_conditional_edges(START, entry_router,
-                            {"pre_contract": "pre_contract", "post_contract": "post_contract"})
+    g.add_edge(START, 'pre_contract')
     g.add_edge("pre_contract", "retrieve")
-    g.add_edge("post_contract", "retrieve")
 
     # 검색 → 관련성 평가 (→ 쿼리 재작성 루프)
     g.add_edge("retrieve", "grade")
