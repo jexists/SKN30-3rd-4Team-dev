@@ -18,6 +18,7 @@ vs_method.py  (metadata JSONB 버전 · 자유 스키마)
 
 import os
 import re
+from functools import lru_cache
 
 import psycopg
 from psycopg.types.json import Json
@@ -34,6 +35,12 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIM = 1024  # ⚠️ 테이블 VECTOR(N)과 반드시 일치시킬 것
 
 embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL, dimensions=EMBEDDING_DIM)
+
+
+@lru_cache(maxsize=256)
+def _embed_query_cached(query: str) -> str:
+    """같은 쿼리 재임베딩 방지 (멀티턴 재질문·재검색 루프에서 API 왕복 절약)."""
+    return str(embeddings.embed_query(query))
 
 # source_type → authority(효력 위계) 기본 매핑. 적재 시 override 가능.
 AUTHORITY_BY_SOURCE = {
@@ -240,7 +247,7 @@ def search_similar(
     k: int = 10,
     min_score: float = 0.0,
 ) -> list[dict]:
-    qvec = str(embeddings.embed_query(query))
+    qvec = _embed_query_cached(query)
     where, params = [], {"q": qvec, "k": k}
 
     def or_contains(field, values, prefix):

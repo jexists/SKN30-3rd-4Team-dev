@@ -41,9 +41,15 @@ import vs_method  # search_similar / get_conn
 # LLM / 검색 연결
 # ──────────────────────────────────────────────
 llm = ChatOpenAI(model="gpt-4.1-mini", temperature=0, timeout=30, max_retries=2)
+# 판정·분류·재작성 등 짧은 보조 호출용 (빠르고 저렴) — 답변 생성은 위 llm 유지
+fast_llm = ChatOpenAI(model="gpt-4.1-nano", temperature=0, timeout=20, max_retries=2)
  
-MAX_RETRIEVAL_ATTEMPTS = 2
-MAX_VERIFY_ATTEMPTS = 2
+MAX_RETRIEVAL_ATTEMPTS = 2   # 재검색 최대 2회 (recall 확보 우선)
+MAX_VERIFY_ATTEMPTS = 1      # 재생성 최대 1회
+
+# grade 결정론 게이트 임계값 (text-embedding-3-small: 관련 조항 보통 0.3~0.6)
+GRADE_STRONG = 0.45          # top-1 이 이 이상이면 충분 → 바로 생성
+GRADE_WEAK = 0.35            # top-1 이 이 미만이면 부족 → (남은 횟수 내) 재작성
  
 _conn = None
 def conn():
@@ -53,9 +59,10 @@ def conn():
     return _conn
  
  
-def _llm_json(prompt: str) -> dict:
-    """LLM 응답을 JSON 으로 강제 파싱. 실패 시 빈 dict."""
-    raw = llm.invoke(prompt + "\n\nJSON 객체만 출력. 설명·마크다운 금지.").content
+def _llm_json(prompt: str, fast: bool = True) -> dict:
+    """LLM 응답을 JSON 으로 강제 파싱. 실패 시 빈 dict. 기본은 fast_llm(판정용)."""
+    model = fast_llm if fast else llm
+    raw = model.invoke(prompt + "\n\nJSON 객체만 출력. 설명·마크다운 금지.").content
     raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         return json.loads(raw)
@@ -63,7 +70,7 @@ def _llm_json(prompt: str) -> dict:
         return {}
  
  
-def _history_text(state: "FactCheckState", n: int = 6) -> str:
+def _history_text(state: "FactCheckState", n: int = 12) -> str:
     """최근 대화 n개를 프롬프트용 텍스트로. 법적 고지 꼬리는 제거해 노이즈 감소."""
     lines = []
     for m in (state.get("messages") or [])[-n:]:
@@ -134,6 +141,9 @@ class FactCheckState(TypedDict, total=False):
     retrieval_attempts: int
     answer: str
     verify_attempts: int
+    _last_query: str                  # 직전 검색 쿼리 (동일 쿼리 재검색 스킵용)
+    _grade: dict                      # 관련성 판정 임시 채널
+    _verify: dict                     # 충실성 판정 임시 채널
  
  
 # ══════════════════════════════════════════════
@@ -289,38 +299,51 @@ USE_FILTERS = False
 
 def retrieve(state: FactCheckState) -> dict:
     """pgvector 검색. binding·persuasive 함께 가져와 뒤에서 층 분리.
-    USE_FILTERS=False 면 stage/issue 필터 없이 벡터 유사도만 사용."""
+    USE_FILTERS=False 면 stage/issue 필터 없이 벡터 유사도만 사용.
+    재작성 쿼리가 직전과 같으면 재검색을 생략(불필요한 임베딩·DB 왕복 제거)."""
+    if state.get("_last_query") == state["query"] and state.get("retrieved"):
+        return {}                                   # 동일 쿼리 → 기존 결과 재사용
     if USE_FILTERS:
         hits = vs_method.search_similar(
             conn(),
             query=state["query"],
             stage=state.get("stage"),
             issues=state.get("issues") or None,
-            k=8,
+            k=12,
             min_score=0.15,
         )
     else:
         hits = vs_method.search_similar(
             conn(),
             query=state["query"],
-            k=8,
+            k=12,
             min_score=0.15,
         )
-    return {"retrieved": hits}
+    # 재검색이면 기존 결과와 병합 (교체 X): 시도마다 근거가 누적돼 recall 상승
+    prev = state.get("retrieved") or []
+    if prev and state.get("retrieval_attempts", 0) > 0:
+        seen, merged = set(), []
+        for h in sorted(prev + hits, key=lambda x: -x.get("similarity", 0)):
+            key = h.get("content", "")[:120]
+            if key not in seen:
+                seen.add(key)
+                merged.append(h)
+        hits = merged[:12]
+    return {"retrieved": hits, "_last_query": state["query"]}
  
  
 def grade_documents(state: FactCheckState) -> dict:
-    """검색 결과가 질문을 커버하는지 판정 (관련성 평가)."""
-    ctx = "\n".join(
-        f"- ({h.get('authority','?')}) {h.get('content','')[:120]}"
-        for h in state["retrieved"]
-    )
-    v = _llm_json(
-        "검색된 조항이 질문에 답하기에 충분한가?\n"
-        'keys: sufficient(bool), gap(부족하면 무엇이 빠졌는지 한 문장).\n\n'
-        f"질문: {state['query']}\n조항:\n{ctx or '(없음)'}"
-    )
-    return {"_grade": v}  # 임시 채널 (라우터에서 읽고 버림)
+    """관련성 평가 — LLM 없이 검색 유사도 점수로 결정론 판정 (지연·비용 0).
+    top-1 >= GRADE_STRONG 이면 충분, < GRADE_WEAK(또는 결과 없음)이면 부족."""
+    hits = state.get("retrieved") or []
+    top = hits[0]["similarity"] if hits else 0.0
+    if top >= GRADE_STRONG:
+        v = {"sufficient": True}
+    elif top < GRADE_WEAK:
+        v = {"sufficient": False, "gap": f"관련 조항 부족(top score {top:.2f})"}
+    else:                                            # 중간 구간은 있는 근거로 진행
+        v = {"sufficient": True}
+    return {"_grade": v}
  
  
 def grade_router(state: FactCheckState) -> str:
@@ -335,9 +358,11 @@ def grade_router(state: FactCheckState) -> str:
 def rewrite_query(state: FactCheckState) -> dict:
     """부족한 부분을 반영해 쿼리 재작성 후 재검색 루프."""
     gap = state.get("_grade", {}).get("gap", "")
-    new_q = llm.invoke(
+    new_q = fast_llm.invoke(
         f"원 질문: {state['query']}\n부족한 점: {gap}\n"
-        "검색이 잘 되도록 쿼리를 한 문장으로 재작성해라. 문장만 출력."
+        "임대차 법령 검색에 잘 걸리도록, 원 질문과 다른 표현으로 재작성해라. "
+        "관련 법령명(주택임대차보호법 등)과 법률 용어(대항력·우선변제권·수선의무·계약갱신요구권·"
+        "임차권등기명령 등) 중 해당하는 것을 포함한 한 문장만 출력."
     ).content.strip()
     return {"query": new_q, "retrieval_attempts": state.get("retrieval_attempts", 0) + 1}
  
@@ -363,11 +388,14 @@ def generate(state: FactCheckState) -> dict:
  
     answer = llm.invoke(
         "너는 세입자를 돕는 법률 정보 도우미다. 아래 근거만 사용해 답하라.\n"
-        "규칙: 결론의 법적 근거는 반드시 [법령·판례]에서 인용하고 출처"
-        "(법령명·조항 또는 법원·사건번호)를 명시하라. "
-        "[사례]는 '이런 경우 이렇게 판단된 적 있다'는 참고로만. 근거에 없는 내용은 단정하지 말 것. "
-        "[업로드 서류 분석]이 있으면 그 특약·위험요소를 근거 법령과 연결해 사용자 상황에 맞춰 구체적으로 답하라. "
-        "이전 대화 맥락을 고려해 자연스럽게 이어서 답하라.\n"
+        "규칙:\n"
+        "1) 첫 문장에서 질문에 직접 답하라. 질문의 핵심 용어를 그대로 사용해 결론부터 제시하라.\n"
+        "2) 결론의 법적 근거는 [법령·판례]에서 인용하고 출처(법령명·조항 또는 법원·사건번호)를 명시하라.\n"
+        "3) 근거가 부분적이면 그 범위 안에서 최대한 구체적으로 답하고, 마지막에 한 문장으로 한계를 밝혀라. "
+        "답변 전체를 '알 수 없다'로 끝내지 마라.\n"
+        "4) [사례]는 '이런 경우 이렇게 판단된 적 있다'는 참고로만. 근거에 없는 내용은 단정하지 마라.\n"
+        "5) [업로드 서류 분석]이 있으면 그 특약·위험요소를 근거 법령과 연결해 사용자 상황에 맞춰 답하라.\n"
+        "6) 이전 대화 맥락을 고려해 자연스럽게 이어서 답하라. 면책 문구·인사말은 넣지 마라.\n"
         f"{risk_txt}\n\n"
         f"[대화 맥락]\n{_history_text(state)}\n\n"
         f"{doc_txt}"
