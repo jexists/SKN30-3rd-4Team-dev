@@ -12,10 +12,17 @@ import os
 import uuid
 import base64
 import tempfile
+import threading
+import time
 
 import streamlit as st
 
 from backend import setup_graph, answer_of
+
+# 백그라운드 답변 스레드용 결과 저장소 (모듈 전역 — 세션과 무관하게 req_id 로 구분).
+# st.session_state 는 워커 스레드에서 안전하게 쓸 수 없어, 순수 dict 로 주고받는다.
+_BG_RESULTS: dict[str, str] = {}
+_BG_STARTED: set[str] = set()
 
 # 로고 경로 (app/assets/logo.png). CWD 와 무관하게 __file__ 기준 절대경로.
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
@@ -212,6 +219,7 @@ def render_chat(stage: str) -> None:
         if st.button("＋ 새 대화", use_container_width=True, key=f"new_{stage}"):
             st.session_state[tkey] = str(uuid.uuid4())
             st.session_state[mkey] = []
+            st.session_state[f"pending_{stage}"] = None
             st.rerun()
 
     # # ── 매매 시세 입력 (계약 전 · 전세가율 계산용)
@@ -270,7 +278,9 @@ def render_chat(stage: str) -> None:
                         st.caption(desc)
                         if st.button("자세히 보기 →", key=f"faq_{stage}_{idx}", use_container_width=True):
                             chat_log.append({"role": "user", "content": title})
-                            st.session_state[pkey] = {"query": title, "docs": None}
+                            st.session_state[pkey] = {
+                                "query": title, "docs": None, "req_id": str(uuid.uuid4()),
+                            }
                             st.rerun()
 
     # ── 대화 내역
@@ -282,7 +292,7 @@ def render_chat(stage: str) -> None:
     #   실제 로딩/답변 처리는 입력창·푸터를 렌더한 뒤 맨 마지막에 수행 →
     #   느린 답변 대기 중에도 입력창과 푸터가 계속 보인다.
     pending = st.session_state[pkey]
-    resp_ph = st.empty() if pending else None
+    resp_ph = st.empty()
 
     # ── 입력창 (파일 다중 첨부 + 전송). 구버전이면 텍스트 전용 폴백.
     # 본문 최상위에서 직접 호출 → Streamlit 이 화면 하단에 고정(fixed) 시킨다.
@@ -325,21 +335,39 @@ def render_chat(stage: str) -> None:
         st.session_state[pkey] = {
             "query": text or "업로드한 서류를 분석해줘",
             "docs": doc_paths or None,
+            "req_id": str(uuid.uuid4()),
         }
         st.rerun()
 
     # ── 처리 대기 답변 (맨 마지막): 위에서 확보한 resp_ph 자리를 로딩→답변으로 채운다.
-    #   입력창이 이미 렌더된 뒤라, 느린 답변을 기다리는 동안에도 계속 보인다.
+    #   답변은 백그라운드 스레드에서 계산 → 메인 스크립트는 블로킹되지 않는다.
+    #   덕분에 로딩 중 "새 대화"를 눌러도 응답을 기다리지 않고 즉시 리셋된다.
     if pending:
-        with resp_ph.container():
-            with st.chat_message("assistant"):
-                with st.spinner("근거를 찾는 중…"):
-                    reply = answer_of(
-                        gs, st.session_state[tkey],
-                        pending["query"],
-                        # stage, pending["docs"], market_price,   # market_price 입력란 주석 처리로 비활성화
-                        stage, pending["docs"], None,
-                    )
-        chat_log.append({"role": "assistant", "content": reply})
-        st.session_state[pkey] = None
-        st.rerun()
+        req_id = pending["req_id"]
+
+        if req_id not in _BG_STARTED:
+            _BG_STARTED.add(req_id)
+
+            def _worker(
+                req_id=req_id, gs=gs, thread_id=st.session_state[tkey],
+                query=pending["query"], docs=pending["docs"],
+            ):
+                try:
+                    _BG_RESULTS[req_id] = answer_of(gs, thread_id, query, stage, docs, None)
+                except Exception as e:  # noqa: BLE001 — 백그라운드 스레드 예외를 채팅 말풍선으로 전달
+                    _BG_RESULTS[req_id] = f"오류가 발생했습니다: {e}"
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+        if req_id in _BG_RESULTS:
+            reply = _BG_RESULTS.pop(req_id)
+            _BG_STARTED.discard(req_id)
+            chat_log.append({"role": "assistant", "content": reply})
+            st.session_state[pkey] = None
+            st.rerun()
+        else:
+            with resp_ph.container():
+                with st.chat_message("assistant"):
+                    st.markdown("근거를 찾는 중… ⏳")
+            time.sleep(0.4)
+            st.rerun()
