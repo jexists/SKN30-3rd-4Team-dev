@@ -29,3 +29,25 @@ desktop.ini
 
 # 대용량 체크포인트 (resume용, 커밋 불필요)
 data/01_raw/*_checkpoint.jsonl
+
+# 100MB 초과로 GitHub push가 막히는 미분할 원본 (분할본 kb_chunks_prec.part*.jsonl만 커밋)
+data/04_chunks/kb_chunks_prec.jsonl
+
+# 실행 로그
+logs/
+data/02_loaded/\[국토교통부]_2022_주택임대차분쟁조정사례집.tables.json
+data/02_loaded/\[국토교통부]_2022_주택임대차분쟁조정사례집.text.md
+data/02_loaded/2021_\[한국부동산원]_주택·상가건물_임대차분쟁조정사례집.md
+data/02_loaded/2021_\[한국부동산원]_주택·상가건물_임대차분쟁조정사례집.tables.json
+data/02_loaded/2021_\[한국부동산원]_주택·상가건물_임대차분쟁조정사례집.text.md
+data/02_loaded/2022_개정_주택임대차_표준계약서(개정전).tables.json
+data/02_loaded/2022_개정_주택임대차_표준계약서(개정전).text.md
+data/02_loaded/2022_주택·상가건물_임대차분쟁조정_사례집.tables.json
+data/02_loaded/2022_주택·상가건물_임대차분쟁조정_사례집.text.md
+data/02_loaded/2023_주택·상가건물_임대차분쟁조정_사례집.tables.json
+data/02_loaded/2023_주택·상가건물_임대차분쟁조정_사례집.text.md
+data/02_loaded/2023_주택·상가건물_임대차분쟁조정사례집(한국부동산원).tables.json
+data/02_loaded/2023_주택·상가건물_임대차분쟁조정사례집(한국부동산원).text.md
+data/02_loaded/2024_주택·상가건물_임대차분쟁조정_사례집.tables.json
+data/02_loaded/2024_주택·상가건물_임대차분쟁조정_사례집.text.md
+data/04_chunks/kb_chunks.jsonl
