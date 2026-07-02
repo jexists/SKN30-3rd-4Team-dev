@@ -24,6 +24,9 @@ from psycopg.types.json import Json
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # ──────────────────────────────────────────────
 # 설정  (임베딩은 기존 코드 그대로)
 # ──────────────────────────────────────────────
@@ -234,7 +237,7 @@ def search_similar(
     authorities: list[str] = None,     # 예: ['binding']
     min_year: int = None,              # 최신성 필터
     meta_filter: dict = None,          # 임의 키 등식 필터 (예: {'court': '대법원'})
-    k: int = 5,
+    k: int = 10,
     min_score: float = 0.0,
 ) -> list[dict]:
     qvec = str(embeddings.embed_query(query))
@@ -298,38 +301,36 @@ if __name__ == "__main__":
     conn = get_conn()
     ensure_schema(conn)
 
-    # 법령: law_name/article/시행일
-    ingest_document(
-        conn,
-        "제3조(대항력 등) ① 임대차는 그 등기가 없는 경우에도 임차인이 주택의 인도와 "
-        "주민등록을 마친 때에는 그 다음 날부터 제삼자에 대하여 효력이 생긴다. …",
-        {
-            "source_type": "statute", "source_org": "법제처",
-            "doc_title": "주택임대차보호법", "doc_year": 2023,
-            "stage": "both", "issue": ["deposit", "opposing_power"],
-            "law_name": "주택임대차보호법", "시행일": "2023-07-19",
-        },
-        split_preset="law",
-    )
+    # # 법령: law_name/article/시행일
+    # ingest_document(
+    #     conn,
+    #     "제3조(대항력 등) ① 임대차는 그 등기가 없는 경우에도 임차인이 주택의 인도와 "
+    #     "주민등록을 마친 때에는 그 다음 날부터 제삼자에 대하여 효력이 생긴다. …",
+    #     {
+    #         "source_type": "statute", "source_org": "법제처",
+    #         "doc_title": "주택임대차보호법", "doc_year": 2023,
+    #         "stage": "both", "issue": ["deposit", "opposing_power"],
+    #         "law_name": "주택임대차보호법", "시행일": "2023-07-19",
+    #     },
+    #     split_preset="law",
+    # )
 
-    # 판례: court/case_no/선고일  (법령엔 없는 키)
-    ingest_document(
-        conn,
-        "대항력을 갖춘 임차인은 후순위 담보권자보다 우선하여 보증금을 변제받을 수 있다 …",
-        {
-            "source_type": "precedent", "source_org": "대법원",
-            "doc_title": "대법원 2013다12345 판결", "doc_year": 2014,
-            "stage": "post", "issue": ["deposit", "priority_repayment"],
-            "court": "대법원", "case_no": "2013다12345", "선고일": "2014-03-27",
-        },
-        split_preset="default",
-    )
+    # # 판례: court/case_no/선고일  (법령엔 없는 키)
+    # ingest_document(
+    #     conn,
+    #     "대항력을 갖춘 임차인은 후순위 담보권자보다 우선하여 보증금을 변제받을 수 있다 …",
+    #     {
+    #         "source_type": "precedent", "source_org": "대법원",
+    #         "doc_title": "대법원 2013다12345 판결", "doc_year": 2014,
+    #         "stage": "post", "issue": ["deposit", "priority_repayment"],
+    #         "court": "대법원", "case_no": "2013다12345", "선고일": "2014-03-27",
+    #     },
+    #     split_preset="default",
+    # )
 
     # 판례만, 보증금 쟁점
     for hit in search_similar(
-        conn, "보증금 우선변제 판례",
-        source_types=["precedent"], issues=["priority_repayment"], k=3,
+        conn, "주택임대차보호법 14조", k=10,
     ):
         # 판례에만 있는 키(court/case_no)도 그대로 접근
-        print(f"[{hit['similarity']}] ({hit['authority']}) "
-              f"{hit.get('court','')} {hit.get('case_no','')} | {hit['content'][:40]}...")
+        print(f"[{hit['similarity']}] , {hit['content'][:100]}")

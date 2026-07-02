@@ -34,6 +34,21 @@ def _find_src_core():
 
 SRC_DIR = _find_src_core()
 
+# ocr_get_text.py 가 있는 src/adapt 를 위로 거슬러 올라가며 자동 탐색
+def _find_src_adapt():
+    d = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(6):
+        cand = os.path.join(d, "src", "adapter")
+        if os.path.isfile(os.path.join(cand, "ocr_get_text.py")):
+            return cand
+        parent = os.path.dirname(d)
+        if parent == d:            # 루트 도달
+            break
+        d = parent
+    return None
+
+ADAPT_DIR = _find_src_adapt()
+
 # graph / vs_method 가 os.environ 으로 읽는 키들 (st.secrets → 환경변수로 승격)
 SECRET_KEYS = ("OPENAI_API_KEY", "DB_URL", "LANGCHAIN_TRACING_V2", "LANGSMITH_API_KEY")
 
@@ -85,7 +100,7 @@ def setup_graph() -> dict:
         if SRC_DIR not in sys.path:
             sys.path.insert(0, SRC_DIR)     # graph 안의 `import vs_method` 도 여기서 해결
 
-        import graph                         # 모듈 로드 시 app = build_app() 빌드
+        import graph                        # 모듈 로드 시 app = build_app() 빌드
         result["module"] = graph
         result["ready"] = True
 
