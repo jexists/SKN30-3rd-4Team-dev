@@ -2,7 +2,7 @@
 ui.py — 공유 UI 헬퍼
 
 - inject_css():  전역 스타일 (test_layout.py 디자인 + 랜딩 카드 + chat_input 스타일)
-- render_footer():  모든 페이지 공통 법률 고지 푸터
+- render_sidebar_footer():  사이드바 하단 고정 법률 고지 푸터
 - render_chat(stage):  채팅 화면 공통 렌더 (계약 전/후 페이지가 호출)
 - LOGO_PATH:  로고 이미지 경로 (없으면 이모지 폴백)
 - FAQ_BEFORE / FAQ_AFTER:  단계별 자주 묻는 질문
@@ -10,6 +10,7 @@ ui.py — 공유 UI 헬퍼
 
 import os
 import uuid
+import base64
 import tempfile
 
 import streamlit as st
@@ -50,10 +51,6 @@ def inject_css() -> None:
         .block-container {max-width: 820px; padding-top: 3.5rem; padding-bottom: 1rem;}
         #MainMenu, footer {visibility: hidden;}
 
-        /* 로고 이미지 가운데 정렬 */
-        [data-testid="stImage"], [data-testid="stImageContainer"] {text-align:center;}
-        [data-testid="stImage"] img, [data-testid="stImageContainer"] img {margin-left:auto; margin-right:auto;}
-
         .topbar {display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;}
         .topbar-left {display:flex; align-items:center; gap:8px; font-size:19px; font-weight:700; color:#1a1a1a;}
 
@@ -78,19 +75,19 @@ def inject_css() -> None:
         }
         .notice-title {font-weight:700; color:#374151; margin-bottom:4px;}
 
-        /* ── 푸터: 구분선 아래로 안내사항·법률고지·저작권을 조용하게 정렬 */
-        .footer-wrap {padding-top:22px; border-top:1px solid #edeff2;}
-        .footer-note {
-            display:flex; gap:9px; align-items:flex-start;
-            font-size:12.5px; color:#6b7280; line-height:1.65; margin-bottom:16px;
+        /* ── 사이드바 하단 고정 푸터 (법률고지 + 저작권) */
+        /* 사이드바 본문을 세로 flex 로 만들어 마지막 요소를 바닥으로 밀어낸다 */
+        [data-testid="stSidebarUserContent"] {
+            display:flex; flex-direction:column; min-height:calc(100vh - 5rem);
         }
-        .footer-note .ico {color:#2563eb; font-size:13px; line-height:1.5; flex:none;}
-        .footer-note b {display:block; color:#374151; font-weight:600; margin-bottom:2px;}
-        .footer-legal {
-            font-size:11.5px; color:#8a6d1f; line-height:1.65;
-            padding-left:12px; border-left:2px solid #e7cf8a; margin-bottom:18px;
+        .sidebar-footer {
+            margin-top:100px; padding-top:16px; border-top:1px solid #e6e8ec;
         }
-        .footer-copy {font-size:11px; color:#b3b8bf; letter-spacing:.01em;}
+        .sidebar-footer .footer-legal {
+            font-size:11px; color:#8a6d1f; line-height:1.6;
+            padding-left:10px; border-left:2px solid #e7cf8a; margin-bottom:12px;
+        }
+        .sidebar-footer .footer-copy {font-size:10.5px; color:#b3b8bf; letter-spacing:.01em;}
 
         /* 랜딩 히어로 */
         .hero-title {text-align:center; font-size:30px; font-weight:800; color:#1a1a1a;
@@ -102,6 +99,8 @@ def inject_css() -> None:
             min-height:210px; border-radius:18px; border:none !important; color:#fff !important;
             padding:26px 22px; box-shadow:0 6px 16px rgba(0,0,0,.12); transition:transform .12s ease;
         }
+        /* 랜딩 카드 행 아래 여백 */
+        .stHorizontalBlock:has(.st-key-go_pre) {margin-bottom:80px;}
         .st-key-go_pre button:hover, .st-key-go_post button:hover {transform:translateY(-3px);}
         .st-key-go_pre button {background:linear-gradient(160deg,#3b82f6,#2563eb) !important;}
         .st-key-go_post button {background:linear-gradient(160deg,#8b5cf6,#6d28d9) !important;}
@@ -115,8 +114,8 @@ def inject_css() -> None:
         .st-key-go_pre [data-testid="stMarkdownContainer"] p:nth-child(3),
         .st-key-go_post [data-testid="stMarkdownContainer"] p:nth-child(3) {font-size:13px; opacity:.92; line-height:1.6;}
 
-        /* 입력창 wrapper 위 여백 (대화 내역·로딩과 간격) */
-        .st-key-chatwrap_pre, .st-key-chatwrap_post {margin-top:40px;}
+        /* 하단 고정 입력창 컨테이너 패딩 균일하게 (기본 16px 16px 56px → 16px) */
+        [data-testid="stBottomBlockContainer"] {padding:16px !important;}
 
         /* chat_input 전송 버튼만 노랑 (첨부 📎 버튼은 기본색 유지) */
         [data-testid="stChatInputSubmitButton"] {background:#f5df4e !important; border:none !important;}
@@ -128,9 +127,19 @@ def inject_css() -> None:
 
 
 def render_logo(width: int = 160) -> None:
-    """로고 이미지 표시 (없으면 이모지+텍스트 폴백)."""
+    """로고 이미지 표시 (없으면 이모지+텍스트 폴백).
+
+    st.image 는 컬럼 안에서 좌측 정렬되는 이슈가 있어, base64 인라인 이미지를
+    text-align:center div 로 감싸 버전·DOM 구조와 무관하게 가운데 정렬한다.
+    """
     if os.path.isfile(LOGO_PATH):
-        st.image(LOGO_PATH, width=width)
+        b64 = base64.b64encode(open(LOGO_PATH, "rb").read()).decode()
+        st.markdown(
+            f"<div style='text-align:center;'>"
+            f"<img src='data:image/png;base64,{b64}' width='{width}' "
+            f"style='mix-blend-mode:multiply;'/></div>",
+            unsafe_allow_html=True,
+        )
     else:
         st.markdown(
             "<div style='font-size:40px; text-align:center;'>🔍⚖️<br>"
@@ -139,12 +148,12 @@ def render_logo(width: int = 160) -> None:
         )
 
 
-def render_footer() -> None:
-    """모든 페이지 공통 푸터 — 안내사항 + 법률 고지 + 저작권."""
+def render_sidebar_footer() -> None:
+    """사이드바 하단 고정 푸터 — 법률 고지 + 저작권. (with st.sidebar 안에서 호출)"""
     legal = LEGAL_NOTICE.lstrip("※ ").strip()
     st.markdown(
         f"""
-        <div class="footer-wrap">
+        <div class="sidebar-footer">
             <div class="footer-legal">{legal}</div>
             <div class="footer-copy">© 2026 전·월세 분쟁 팩트체커</div>
         </div>
@@ -160,7 +169,7 @@ _STAGE_META = {
     "pre": {
         "title": "🔍 계약 전 (예방)",
         "greet_title": "안녕하세요! 계약 전 단계예요.",
-        "greet_desc": "등기부·특약이 걱정되면 서류를 올리거나, 전세사기·보증금 관련해 궁금한 점을 물어보세요.",
+        "greet_desc": "표준 임대차 계약서·등기부·특약이 걱정되면 서류를 올리거나, 전세사기·보증금 관련해 궁금한 점을 물어보세요.",
         "placeholder": "등기부·특약 관련 궁금한 점을 입력하세요.",
         "faq": FAQ_BEFORE,
     },
@@ -276,20 +285,19 @@ def render_chat(stage: str) -> None:
     resp_ph = st.empty() if pending else None
 
     # ── 입력창 (파일 다중 첨부 + 전송). 구버전이면 텍스트 전용 폴백.
-    # st.container 안에서 호출 → 화면 하단 고정(fixed) 대신 문서 흐름에 인라인 배치.
-    #   그래야 아래 render_footer() 푸터가 입력창 '밑'에 표시된다.
-    with st.container(key=f"chatwrap_{stage}"):
-        try:
-            submitted = st.chat_input(
-                meta["placeholder"],
-                accept_file="multiple",
-                file_type=["png", "jpg", "jpeg", "pdf"],
-                key=f"chat_input_{stage}",
-            )
-            _attach_ok = True
-        except TypeError:
-            submitted = st.chat_input(meta["placeholder"], key=f"chat_input_{stage}")
-            _attach_ok = False
+    # 본문 최상위에서 직접 호출 → Streamlit 이 화면 하단에 고정(fixed) 시킨다.
+    #   (컨테이너로 감싸면 인라인 배치가 되어 고정이 풀린다.)
+    try:
+        submitted = st.chat_input(
+            meta["placeholder"],
+            accept_file="multiple",
+            file_type=["png", "jpg", "jpeg", "pdf"],
+            key=f"chat_input_{stage}",
+        )
+        _attach_ok = True
+    except TypeError:
+        submitted = st.chat_input(meta["placeholder"], key=f"chat_input_{stage}")
+        _attach_ok = False
 
     if submitted:
         # 반환형 정규화: 첨부 지원 시 객체(text/files), 아니면 문자열
@@ -320,11 +328,8 @@ def render_chat(stage: str) -> None:
         }
         st.rerun()
 
-    # ── 푸터
-    render_footer()
-
     # ── 처리 대기 답변 (맨 마지막): 위에서 확보한 resp_ph 자리를 로딩→답변으로 채운다.
-    #   입력창·푸터가 이미 렌더된 뒤라, 느린 답변을 기다리는 동안에도 계속 보인다.
+    #   입력창이 이미 렌더된 뒤라, 느린 답변을 기다리는 동안에도 계속 보인다.
     if pending:
         with resp_ph.container():
             with st.chat_message("assistant"):

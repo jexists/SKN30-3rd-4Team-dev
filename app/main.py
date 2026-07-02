@@ -18,7 +18,7 @@ if _APP_DIR not in sys.path:
 
 import streamlit as st
 
-from ui import render_logo
+from ui import render_logo, render_sidebar_footer
 
 st.set_page_config(
     page_title="전·월세 분쟁 팩트체커",
@@ -27,19 +27,36 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# 사이드바 상단 로고
-with st.sidebar:
-    render_logo(width=140)
-    st.markdown("### 전·월세 팩트체커")
-    st.caption("계약 전 예방 · 계약 후 분쟁")
-    st.divider()
-
-# 페이지 등록 → 사이드바에 목록 자동 표시
+# 페이지 등록 (자동 내비게이션 위젯은 숨기고, 아래에서 로고 → 메뉴 → 푸터 순서로 직접 배치)
 pages = [
     st.Page("pages/landing.py", title="메인", icon="🏠", default=True),
     st.Page("pages/pre.py", title="계약 전 (예방)", icon="🔍"),
     st.Page("pages/post.py", title="계약 후 (분쟁)", icon="⚖️"),
 ]
+pg = st.navigation(pages, position="hidden")
 
-pg = st.navigation(pages)
+# 사이드바: 로고 → 메뉴 3개 → (여백) → 하단 법률고지 푸터
+with st.sidebar:
+    render_logo(width=240)
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebarUserContent"] [data-testid="stCaptionContainer"] p {
+            margin-bottom: 0;
+        }
+        /* 사이드바 메뉴(페이지 링크) 글자 스타일 */
+        [data-testid="stSidebarUserContent"] [data-testid="stPageLink-NavLink"] p {
+            font-size: 20px !important;
+            font-weight: bold !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.divider()
+    for page in pages:
+        st.page_link(page)
+    # margin-top:auto 로 사이드바 맨 아래에 고정 (CSS 는 각 페이지 inject_css 에 정의)
+    render_sidebar_footer()
+
 pg.run()

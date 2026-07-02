@@ -7,7 +7,7 @@ pages/landing.py — 메인(랜딩) 페이지
 
 import streamlit as st
 
-from ui import inject_css, render_logo, render_footer
+from ui import inject_css, render_logo
 
 inject_css()
 
@@ -20,7 +20,7 @@ with col_c:
 st.markdown(
     """
     <div class="hero-title">전·월세 계약,<br><b>계약 전부터 계약 후까지</b> 한눈에 도와줄게!</div>
-    <div class="hero-sub">등기부·특약 분석부터 수리·보증금 분쟁까지, 팩트체커가 함께합니다.</div>
+    <div class="hero-sub">표준 임대차 계약서·등기부·특약 분석부터 수리·보증금 분쟁까지, 팩트체커가 함께합니다.</div>
     """,
     unsafe_allow_html=True,
 )
@@ -41,5 +41,3 @@ with c_right:
         key="go_post", use_container_width=True,
     ):
         st.switch_page("pages/post.py")
-
-render_footer()
