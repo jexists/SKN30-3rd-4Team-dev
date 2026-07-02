@@ -71,6 +71,30 @@ def _history_text(state: "FactCheckState", n: int = 6) -> str:
         content = (getattr(m, "content", "") or "").split("\n\n---\n")[0]
         lines.append(f"{role}: {content[:200]}")
     return "\n".join(lines) or "(이전 대화 없음)"
+
+
+def _doc_context(state: "FactCheckState") -> str:
+    """OCR/서류 분석(findings)을 답변·검증 프롬프트용 텍스트로. 없으면 빈 문자열."""
+    f = state.get("findings") or {}
+
+    def won(v):
+        try:
+            return f"{int(v):,}원"
+        except Exception:
+            return str(v)
+
+    lines = []
+    if f.get("special_terms"):
+        lines.append("특약: " + " / ".join(str(x) for x in f["special_terms"]))
+    if f.get("flags"):
+        lines.append("주의 특약·요소: " + " / ".join(str(x) for x in f["flags"]))
+    if f.get("deposit"):
+        lines.append("보증금(추출): " + won(f["deposit"]))
+    if f.get("senior_debt"):
+        lines.append("선순위 채권(추출): " + won(f["senior_debt"]))
+    if not lines and state.get("document_text"):
+        lines.append(state["document_text"][:800])   # 구조화 실패 시 원문 일부
+    return "\n".join(lines)
  
  
 def _cite(h: dict) -> str:
@@ -95,7 +119,8 @@ class FactCheckState(TypedDict, total=False):
     question: str
     intent: str                      # 'chitchat' | 'legal'
     has_document: bool
-    document_path: Optional[str]
+    document_path: Optional[str]        # 단일 파일 (하위호환)
+    document_paths: Optional[list]      # 여러 파일 경로 리스트
     market_price: Optional[int]       # 매매 시세(원) — 유저 입력 (전세가율 계산용)
     messages: Annotated[list, add_messages]
     # 계약 전 산출물
@@ -150,7 +175,19 @@ def pre_entry_router(state: FactCheckState) -> str:
  
  
 def ocr_extract(state: FactCheckState) -> dict:
-    return {"document_text": run_ocr(state["document_path"])}
+    """업로드된 파일(여러 개 가능)을 각각 OCR해 파일명 라벨과 함께 하나로 합친다."""
+    import os as _os
+    paths = state.get("document_paths") or (
+        [state["document_path"]] if state.get("document_path") else []
+    )
+    parts = []
+    for p in paths:
+        try:
+            txt = run_ocr(p)
+        except Exception as e:                      # 한 파일 실패해도 나머지는 진행
+            txt = f"[읽기 실패: {e}]"
+        parts.append(f"===== 파일: {_os.path.basename(p)} =====\n{txt}")
+    return {"document_text": "\n\n".join(parts)}
  
  
 def analyze_document(state: FactCheckState) -> dict:
@@ -159,7 +196,7 @@ def analyze_document(state: FactCheckState) -> dict:
         "다음 등기부/계약서에서 위험 요소를 추출해라.\n"
         'keys: deposit(보증금·정수), senior_debt(선순위 채권액·정수), '
         'address(문자열), special_terms(특약 리스트), flags(위험 특약 리스트).\n\n'
-        f"{state['document_text'][:4000]}"
+        f"{state['document_text'][:8000]}"
     )
     return {"findings": data}
  
@@ -320,15 +357,20 @@ def generate(state: FactCheckState) -> dict:
  
     risk = state.get("risk_result")
     risk_txt = f"\n[위험 진단] {risk['level']} / {'; '.join(risk['reasons'])}" if risk else ""
+
+    dc = _doc_context(state)                       # OCR/서류 분석 결과
+    doc_txt = f"[업로드 서류 분석]\n{dc}\n\n" if dc else ""
  
     answer = llm.invoke(
         "너는 세입자를 돕는 법률 정보 도우미다. 아래 근거만 사용해 답하라.\n"
         "규칙: 결론의 법적 근거는 반드시 [법령·판례]에서 인용하고 출처"
         "(법령명·조항 또는 법원·사건번호)를 명시하라. "
         "[사례]는 '이런 경우 이렇게 판단된 적 있다'는 참고로만. 근거에 없는 내용은 단정하지 말 것. "
+        "[업로드 서류 분석]이 있으면 그 특약·위험요소를 근거 법령과 연결해 사용자 상황에 맞춰 구체적으로 답하라. "
         "이전 대화 맥락을 고려해 자연스럽게 이어서 답하라.\n"
         f"{risk_txt}\n\n"
         f"[대화 맥락]\n{_history_text(state)}\n\n"
+        f"{doc_txt}"
         f"[법령·판례]\n{fmt(binding)}\n\n[사례]\n{fmt(persuasive)}\n\n[실무 참고]\n{fmt(ref)}\n\n"
         f"질문: {state.get('question','')}"
     ).content.strip()
@@ -336,10 +378,13 @@ def generate(state: FactCheckState) -> dict:
  
  
 def verify(state: FactCheckState) -> dict:
-    """답변이 검색 근거에 충실한지(환각 여부) 검증."""
+    """답변이 검색 근거+업로드 서류에 충실한지(환각 여부) 검증."""
     ctx = "\n".join(f"- {h.get('content','')[:200]}" for h in state["retrieved"])
+    dc = _doc_context(state)
+    if dc:
+        ctx += "\n[업로드 서류]\n" + dc
     v = _llm_json(
-        "답변이 아래 근거에 충실한가? 근거에 없는 사실 단정이 있으면 faithful=false.\n"
+        "답변이 아래 근거에 충실한가? 근거(검색 조항 + 업로드 서류)에 없는 사실 단정이 있으면 faithful=false.\n"
         'keys: faithful(bool), problem(문제 있으면 한 문장).\n\n'
         f"근거:\n{ctx}\n\n답변:\n{state['answer']}"
     )
@@ -453,11 +498,13 @@ app = build_app()
 # ──────────────────────────────────────────────
 def run_turn(thread_id: str, question: str, *, stage: str,
              has_document: bool = False, document_path: str | None = None,
+             document_paths: list | None = None,
              market_price: int | None = None) -> str:
     cfg = {"configurable": {"thread_id": thread_id}}
     out = app.invoke(
         {"question": question, "stage": stage,
-         "has_document": has_document, "document_path": document_path,
+         "has_document": has_document,
+         "document_path": document_path, "document_paths": document_paths,
          "market_price": market_price,
          "messages": [HumanMessage(content=question)]},   # 사용자 발화를 히스토리에 적재
         config=cfg,

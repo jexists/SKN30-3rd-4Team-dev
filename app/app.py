@@ -34,21 +34,6 @@ def _find_src_core():
 
 SRC_DIR = _find_src_core()
 
-# ocr_get_text.py 가 있는 src/adapt 를 위로 거슬러 올라가며 자동 탐색
-def _find_src_adapt():
-    d = os.path.dirname(os.path.abspath(__file__))
-    for _ in range(6):
-        cand = os.path.join(d, "src", "adapter")
-        if os.path.isfile(os.path.join(cand, "ocr_get_text.py")):
-            return cand
-        parent = os.path.dirname(d)
-        if parent == d:            # 루트 도달
-            break
-        d = parent
-    return None
-
-ADAPT_DIR = _find_src_adapt()
-
 # graph / vs_method 가 os.environ 으로 읽는 키들 (st.secrets → 환경변수로 승격)
 SECRET_KEYS = ("OPENAI_API_KEY", "DB_URL", "LANGCHAIN_TRACING_V2", "LANGSMITH_API_KEY")
 
@@ -100,7 +85,7 @@ def setup_graph() -> dict:
         if SRC_DIR not in sys.path:
             sys.path.insert(0, SRC_DIR)     # graph 안의 `import vs_method` 도 여기서 해결
 
-        import graph                        # 모듈 로드 시 app = build_app() 빌드
+        import graph                         # 모듈 로드 시 app = build_app() 빌드
         result["module"] = graph
         result["ready"] = True
 
@@ -184,6 +169,16 @@ with col_new:
         st.session_state.messages = []
         st.rerun()
 
+# 계약 전: 매매 시세를 유저 입력으로 (전세가율 계산용). API 대신 직접 입력.
+market_price = None
+if st.session_state.stage == "pre":
+    man = st.number_input(
+        "매매 시세 (만원) · 전세가율 계산용 · 선택",
+        min_value=0, step=1000, value=0,
+        help="등기부·계약서를 첨부하면 보증금은 자동 추출되고, 이 시세로 전세가율을 계산합니다.",
+    )
+    market_price = int(man) * 10_000 if man else None   # 만원 → 원
+
 if gs["error"]:
     st.warning(gs["error"])
 if not gs["ready"]:
@@ -217,25 +212,26 @@ st.markdown(f'<div class="chat">{"".join(rows)}</div>', unsafe_allow_html=True)
 # ──────────────────────────────────────────────
 # 입력 → 그래프 호출 → 응답
 # ──────────────────────────────────────────────
-def answer_of(question: str, doc_path: str | None) -> str:
+def answer_of(question: str, doc_paths: list | None) -> str:
     if backend is None:
         return f"⚠️ 백엔드 미연결로 답변할 수 없습니다. ({gs['error']})"
     try:
         return backend.run_turn(
             st.session_state.thread_id, question,
             stage=st.session_state.stage,
-            has_document=bool(doc_path),
-            document_path=doc_path,
+            has_document=bool(doc_paths),
+            document_paths=doc_paths,       # 여러 파일 경로 리스트
+            market_price=market_price,      # 계약 전 유저 입력 시세(원), 없으면 None
         )
     except Exception as e:
         return f"⚠️ 처리 중 오류: {e}"
 
 
-# 하단 채팅바: 📎 이미지/PDF 첨부 + 전송 (Streamlit ≥1.43). 구버전이면 텍스트 전용 폴백.
+# 하단 채팅바: 📎 이미지/PDF 다중 첨부 + 전송 (Streamlit ≥1.43). 구버전이면 텍스트 전용 폴백.
 try:
     submitted = st.chat_input(
         "메시지를 입력하세요",
-        accept_file=True,
+        accept_file="multiple",
         file_type=["png", "jpg", "jpeg", "pdf"],
     )
     _attach_ok = True
@@ -251,21 +247,21 @@ if submitted:
     else:
         text, files = str(submitted).strip(), []
 
-    # 첨부 파일 저장 → document_path
-    doc_path = None
-    if files:
-        up = files[0]
-        doc_path = os.path.join(tempfile.gettempdir(), up.name)
-        with open(doc_path, "wb") as fp:
+    # 첨부 파일 전부 저장 → document_paths 리스트
+    doc_paths = []
+    for up in files:
+        p = os.path.join(tempfile.gettempdir(), up.name)
+        with open(p, "wb") as fp:
             fp.write(up.getbuffer())
+        doc_paths.append(p)
 
-    # 사용자 말풍선(첨부 표시 포함)
+    # 사용자 말풍선(첨부 파일명 표시)
     shown = text or "(파일 첨부)"
     if files:
-        shown += f"　📎 {files[0].name}"
+        shown += "　📎 " + ", ".join(f.name for f in files)
     st.session_state.messages.append({"role": "user", "content": shown})
 
     with st.spinner("근거를 찾는 중…"):
-        reply = answer_of(text or "업로드한 서류를 분석해줘", doc_path)
+        reply = answer_of(text or "업로드한 서류를 분석해줘", doc_paths or None)
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.rerun()
